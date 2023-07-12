@@ -1,0 +1,255 @@
+#+title: Cute, Simple Argument parsing in C
+#+author: Anton Hakansson
+
+This is a single-header starting point for parsing command-line arguments.
+It is not meant to be used as-is but rather copied, teased, and molded to fit the specific needs of the project.
+
+#+begin_src C
+  bool    *help_flag = flag_bool ("help", "h", false, "Show help menu.");
+  int64_t *foo_flag  = flag_int64("foo",  "f", 69,    "Foo variable that does X.");
+
+  flag_parse(argc, argv);
+
+  if (*help_flag) {
+    printf("Usage: ./program [OPTIONS]\n");
+    printf("Options:\n");
+    flag_print_options();
+  }
+#+end_src
+
+See [[file:example.c]] for more details.
+
+* Features
+
+- Support for booleans, strings, and integers.
+- No dynamic allocations.
+
+* TODOS
+** TODO option to make a flag required
+** TODO positional flags
+** TODO remove libc dependency
+** TODO add optional min, max checking of int64 flags
+** REVIEW change struct flag to a typed union instead
+
+
+* Lessons learned
+
+** Flattening the ~argv~
+
+It is tempting to flatten the argument list into a contiguous array of characters and use that with a traditional tokenizer approach instead of working with ~argc~ and ~argv~ directly.
+For one, we get a more flexible API that will work on any string.
+Maybe the user can set flags at run-time or the program gets its arguments from elsewhere.
+Furthermore, if we were to support assignments, parsing the semantically equivalent =--arg 34= and =--arg=34= is trivial when working with tokens.
+With ~argv~ we would have to handle the case where the arguments are split between ~argv[i]~ and ~argv[i + 1]~, or the case where the flag and the assignment is fully contained in ~argv[i]~.
+
+But there are down-sides as well.
+1. We have to copy ~argv~ into a new contiguous buffer(4 KiB) with a lifetime of the program.
+2. Pointers into the contiguous buffer are not null-terminated and the user has to access the strings' size to conveniently use them, or alternatively we copy null-terminated versions of the strings to yet another buffer and use these instead. With ~argv~ we get null-termination "for free".
+3. More code for tokenizing the stream.
+
+On balance, and within the scope and intentional simplicity of this library, we stick to just ~argv~ and don't support assignments and other QOL improvements.
+
+For future reference, here is a experimental and unfinished version of working with a contiguous buffer.
+
+#+begin_src C
+  enum FLAG_PARSER_TOKEN {
+    FLAG_TOKEN_NONE,
+    FLAG_TOKEN_DASH,
+    FLAG_TOKEN_DASH_DASH,
+    FLAG_TOKEN_EQUALS,
+    FLAG_TOKEN_IDENTIFIER,
+    FLAG_TOKEN_NUMBER,
+    FLAG_TOKEN_END_OF_STREAM,
+  };
+
+  struct flag_token {
+    enum FLAG_PARSER_TOKEN type;
+    char *at;
+    uint32_t len;
+    int64_t number;
+  };
+
+  struct flag_parser {
+    char *buf;
+    char *at;
+  };
+
+  bool is_whitespace(char c) {
+    return (c == ' ') || (c == '\t');
+  }
+
+  bool is_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+  }
+
+  bool is_digit(char c) {
+    return (c >= '0' && c <= '9');
+  }
+
+  struct flag_token flag_parse_advance(struct flag_parser *p)
+  {
+    // eat whitespace
+    while (is_whitespace(p->at[0])) {
+      p->at += 1;
+    }
+
+    struct flag_token result = {0};
+    result.at = p->at;
+
+    int token_len = 1; // we always read at least one character
+
+    if (p->at[0] == '\0') {
+      result.type = FLAG_TOKEN_END_OF_STREAM;
+    }
+    else if (p->at[0] == '-' && p->at[1] == '-') {
+      result.type = FLAG_TOKEN_DASH_DASH;
+      token_len = 2;
+    }
+    else if (p->at[0] == '-' && is_alpha(p->at[1])) {
+      result.type = FLAG_TOKEN_DASH;
+    }
+    else if (p->at[0] == '=') {
+      result.type = FLAG_TOKEN_EQUALS;
+    }
+    else if (is_alpha(p->at[0])) {
+      result.type = FLAG_TOKEN_IDENTIFIER;
+      char *at = p->at + 1;
+      while (is_alpha(*at) || is_digit(*at)) {
+        at += 1;
+      }
+      token_len = at - result.at;
+    }
+    else if (is_digit(p->at[0]) || p->at[0] == '-') {
+      result.type = FLAG_TOKEN_NUMBER;
+      char *at = p->at + 1;
+      while (is_digit(*at)) {
+        at += 1;
+      }
+      token_len = at - result.at;
+
+      errno = 0;
+      char *endptr;
+      int64_t v = strtoll(p->at, &endptr, 0);
+      if (errno == ERANGE) {
+
+      }
+      if (errno != 0) {
+        perror("strtol");
+        exit(1);
+      }
+
+      if (endptr == p->at) {
+        fprintf(stderr, "Error parsing arguments. Not a number to flag '%s'.\n", "TODO");
+        exit(1);
+      }
+
+      result.number = v;
+    }
+    else {
+      result.type = FLAG_TOKEN_NONE;
+    }
+
+    p->at += token_len;
+    result.len = token_len;
+
+    return result;
+  }
+
+  bool flag_parse_expect(struct flag_parser *p, enum FLAG_PARSER_TOKEN token_type, struct flag_token *token_out)
+  {
+    struct flag_token token = flag_parse_advance(p);
+    if (token_out) *token_out = token;
+    return token.type == token_type;
+  }
+
+
+  void main(void)
+  {
+      char cmd_line[4096] = {0};
+      char *cmd_line_at = &cmd_line[0];
+      for (int i = 1; i < argc; i += 1) {
+        char *at = argv[i];
+        while (*at != '\0') {
+          ,*cmd_line_at++ = *at;
+          at += 1;
+        }
+        ,*cmd_line_at++ = ' ';
+      }
+      ,*cmd_line_at = '\0';
+      int cmd_line_len = (char *)cmd_line_at - (char *)cmd_line_at;
+      printf("cmd_line: %s\n", cmd_line);
+
+      {
+        struct flag_parser p = {0};
+        p.buf = cmd_line;
+        p.at = p.buf;
+
+        for (struct flag_token t = flag_parse_advance(&p);
+             t.type != FLAG_TOKEN_END_OF_STREAM;
+             t = flag_parse_advance(&p)) {
+
+          bool use_short_name = false;
+          switch(t.type) {
+          case FLAG_TOKEN_DASH: use_short_name = true;
+          case FLAG_TOKEN_DASH_DASH:
+            {
+              if (flag_parse_expect(&p, FLAG_TOKEN_IDENTIFIER, &t)) {
+                struct flag_token arg_name = flag_parse_advance(&p);
+                if (arg_name.type == FLAG_TOKEN_EQUALS) {
+                  arg_name = flag_parse_advance(&p);
+                }
+
+                struct flag *f = 0;
+                for (int i = 0; i < g_flags_count; i += 1) {
+                  const char *flag_name_candidate = use_short_name ? g_flags[i].name_short : g_flags[i].name;
+                  if (strncmp(arg_name.at, flag_name_candidate, arg_name.len) == 0) {
+                    f = &g_flags[i];
+                    break;
+                  }
+                }
+
+                if (f) {
+                  static_assert(FLAG_TYPE_COUNT == 3, "Handle all flag types in switch.");
+                  switch (f->type) {
+                  case FLAG_TYPE_BOOL: {} break;
+                  case FLAG_TYPE_STR: {
+                    struct flag_token arg_val;
+                    if (flag_parse_expect(&p, FLAG_TOKEN_IDENTIFIER, &arg_val)) {
+                      ,*((char **)&f->value) = arg_val.at; // ARGGGH!!! this is no longer null-terminated!!!!!
+                    }
+                    else {
+                      // expected value for string.
+                    }
+                  } break;
+                  case FLAG_TYPE_INT64: { } break;
+                  default: assert(0 && "unreachable");
+                  }
+                }
+                else {
+                  // unknown flag
+                }
+              }
+              else {
+                // error expected identifier
+              }
+            } break;
+          case FLAG_TOKEN_IDENTIFIER:
+          case FLAG_TOKEN_NUMBER:
+            {
+              // positional arguments(?)
+            } break;
+          case FLAG_TOKEN_EQUALS:
+            {
+              // error unexpected =
+            } break;
+          case FLAG_TOKEN_END_OF_STREAM:
+          case FLAG_TOKEN_NONE:
+          default: assert(0 && "unreachable");
+          }
+        }
+      }
+
+      printf("\n");
+      exit(0);
+    }
+#+end_src
