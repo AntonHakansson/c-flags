@@ -114,10 +114,11 @@ static char *flag_shift_args(int argc[static 1], char **argv[static 1])
 }
 
 
-static void flag_parse_stripped_flag(int *argc, char **argv[static 1], char *flag, struct flag *f)
+static void flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], char *flag, struct flag *f)
 {
   f->set_by_user = true;
 
+  static_assert(FLAG_TYPE_COUNT == 3, "Handle all FLAG_TYPES.");
   switch (f->type) {
   case FLAG_TYPE_BOOL: {
     *((bool *)&f->value) = true;
@@ -140,16 +141,13 @@ static void flag_parse_stripped_flag(int *argc, char **argv[static 1], char *fla
     errno = 0;
     char *endptr;
     int64_t v = strtoll(number_str, &endptr, 0);
-    if (errno == ERANGE) {
-
-    }
     if (errno != 0) {
       perror("strtol");
       exit(1);
     }
 
     if (endptr == number_str) {
-      fprintf(stderr, "Error parsing arguments. Not a number to flag '%s'.\n", flag);
+      fprintf(stderr, "Error parsing the number '%s' of flag '%s'.\n", number_str, flag);
       exit(1);
     }
 
@@ -161,11 +159,13 @@ static void flag_parse_stripped_flag(int *argc, char **argv[static 1], char *fla
 
 struct flag *flag_info(void *value_ptr)
 {
+  assert(value_ptr);
   return (struct flag *)(value_ptr - offsetof(struct flag, value));
 }
 
 void flag_required(void *value_ptr)
 {
+  assert(value_ptr);
   struct flag* f = flag_info(value_ptr);
   f->is_required = true;
 }
@@ -226,6 +226,7 @@ void flag_print_options(FILE *stream)
     fprintf(stream, "  --%s, -%s     %s", f->name, f->name_short, f->description);
 
     fprintf(stream, "  [ ");
+    static_assert(FLAG_TYPE_COUNT == 3, "Handle all FLAG_TYPES.");
     switch (f->type) {
     case FLAG_TYPE_BOOL:
       {

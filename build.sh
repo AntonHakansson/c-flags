@@ -15,7 +15,9 @@ set -o xtrace
 ./example --str
 ./example --int 49
 ./example -i -69
+./example -i arst # invalid number
+./example -i -999999999999999999999999999999 # number out of range
 ./example --bool --str "tste" --int 59
-./example --sthisisnotanrgument
+./example --sthisisnotanrgument # Warn: unknown argument
 ./example --help
 ./example -h
