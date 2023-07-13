@@ -27,6 +27,13 @@ enum FLAG_TYPE {
   FLAG_TYPE_COUNT,
 };
 
+static_assert(FLAG_TYPE_COUNT == 3, "Handle all FLAG_TYPES");
+union FLAG_VALUE {
+  bool    as_bool;
+  char   *as_str;
+  int64_t as_int64;
+};
+
 struct flag {
   enum FLAG_TYPE type;
   const char *name;
@@ -34,8 +41,8 @@ struct flag {
   const char *description;
   bool      is_required;
   bool      set_by_user;
-  uintptr_t value;
-  uintptr_t default_value;
+  union FLAG_VALUE value;
+  union FLAG_VALUE default_value;
 };
 
 bool    *flag_bool (const char *name, const char *name_short, bool default_value, const char *description);
@@ -69,10 +76,10 @@ bool *flag_bool(const char *name, const char *name_short, bool default_value, co
     .name = name,
     .name_short = name_short,
     .description = description,
-    .default_value = (uintptr_t)default_value,
-    .value         = (uintptr_t)default_value,
+    .default_value = (union FLAG_VALUE)default_value,
+    .value         = (union FLAG_VALUE)default_value,
   };
-  return (bool *)&f->value;
+  return &f->value.as_bool;
 }
 
 char **flag_str(const char *name, const char *name_short, const char *default_value, const char *description)
@@ -85,10 +92,10 @@ char **flag_str(const char *name, const char *name_short, const char *default_va
     .name = name,
     .name_short = name_short,
     .description = description,
-    .default_value = (uintptr_t)default_value,
-    .value         = (uintptr_t)default_value,
+    .default_value = (union FLAG_VALUE)(char *)default_value,
+    .value         = (union FLAG_VALUE)(char *)default_value,
   };
-  return (char **)&f->value;
+  return &f->value.as_str;
 }
 
 int64_t *flag_int64(const char *name, const char *name_short, int64_t default_value, const char *description)
@@ -101,10 +108,10 @@ int64_t *flag_int64(const char *name, const char *name_short, int64_t default_va
     .name = name,
     .name_short = name_short,
     .description = description,
-    .default_value = (uintptr_t)default_value,
-    .value         = (uintptr_t)default_value,
+    .default_value = (union FLAG_VALUE)default_value,
+    .value         = (union FLAG_VALUE)default_value,
   };
-  return (int64_t*)&f->value;
+  return &f->value.as_int64;
 }
 
 
@@ -125,7 +132,7 @@ static void flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], 
   static_assert(FLAG_TYPE_COUNT == 3, "Handle all FLAG_TYPES.");
   switch (f->type) {
   case FLAG_TYPE_BOOL: {
-    *((bool *)&f->value) = true;
+    f->value.as_bool = true;
   } break;
   case FLAG_TYPE_STR: {
     if (*argc < 1) {
@@ -133,7 +140,7 @@ static void flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], 
       exit(1);
     }
     char *str_val = flag_shift_args(argc, argv);
-    *((char **)&f->value) = str_val;
+    f->value.as_str = str_val;
   } break;
   case FLAG_TYPE_INT64: {
     if (*argc < 1) {
@@ -155,7 +162,7 @@ static void flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], 
       exit(1);
     }
 
-    *((int64_t *)&f->value) = v;
+    f->value.as_int64 = v;
   } break;
   default: assert(0 && "unreachable");
   }
@@ -234,17 +241,17 @@ void flag_print_options(FILE *stream)
     switch (f->type) {
     case FLAG_TYPE_BOOL:
       {
-        bool v = *(bool *)&f->default_value;
+        bool v = f->default_value.as_bool;
         fprintf(stream, "default: %s", v ? "true" : "false");
       } break;
     case FLAG_TYPE_STR:
       {
-        char *str = *(char **)&f->default_value;
+        char *str = f->default_value.as_str;
         fprintf(stream, "default: '%s'", str);
       } break;
     case FLAG_TYPE_INT64:
       {
-        int64_t v = *(int64_t *)&f->default_value;
+        int64_t v = f->default_value.as_int64;
         fprintf(stream, "default: %ld", v);
       } break;
 

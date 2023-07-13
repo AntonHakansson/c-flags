@@ -24,11 +24,11 @@ See [[file:example.c]] for more details.
 - Support for booleans, strings, and integers.
 - No dynamic allocations.
 
+
 * TODOS
 ** TODO positional flags
 ** TODO remove libc dependency
 ** TODO add optional min, max checking of int64 flags
-** REVIEW change struct flag to a typed union instead
 
 
 * Lessons learned
