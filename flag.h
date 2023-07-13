@@ -10,10 +10,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <stddef.h>
 
 #ifndef FLAG_CAP
 #define FLAG_CAP 64
@@ -59,6 +55,11 @@ void flag_print_options(FILE *stream);
 
 #ifdef FLAG_IMPLEMENTATION
 
+#include <string.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <stddef.h>
+
 struct flag_context {
   struct flag flags[FLAG_CAP];
   int flags_count;
@@ -68,8 +69,8 @@ static struct flag_context g_flag_ctx = {0};
 
 bool *flag_bool(const char *name, const char *name_short, bool default_value, const char *description)
 {
-  assert(g_flag_ctx.flags_count < FLAG_CAP && "");
-  assert(sizeof(bool) <= sizeof(uintptr_t));
+  assert(g_flag_ctx.flags_count < FLAG_CAP);
+  assert(sizeof(bool) <= sizeof(union FLAG_VALUE));
   struct flag *f = &g_flag_ctx.flags[g_flag_ctx.flags_count++];
   *f = (struct flag){
     .type = FLAG_TYPE_BOOL,
@@ -84,8 +85,8 @@ bool *flag_bool(const char *name, const char *name_short, bool default_value, co
 
 char **flag_str(const char *name, const char *name_short, const char *default_value, const char *description)
 {
-  assert(g_flag_ctx.flags_count < FLAG_CAP && "");
-  assert(sizeof(char *) <= sizeof(uintptr_t));
+  assert(g_flag_ctx.flags_count < FLAG_CAP);
+  assert(sizeof(char *) <= sizeof(union FLAG_VALUE));
   struct flag *f = &g_flag_ctx.flags[g_flag_ctx.flags_count++];
   *f = (struct flag){
     .type = FLAG_TYPE_STR,
@@ -100,8 +101,8 @@ char **flag_str(const char *name, const char *name_short, const char *default_va
 
 int64_t *flag_int64(const char *name, const char *name_short, int64_t default_value, const char *description)
 {
-  assert(g_flag_ctx.flags_count < FLAG_CAP && "");
-  assert(sizeof(int64_t) <= sizeof(uintptr_t));
+  assert(g_flag_ctx.flags_count < FLAG_CAP);
+  assert(sizeof(int64_t) <= sizeof(union FLAG_VALUE));
   struct flag *f = &g_flag_ctx.flags[g_flag_ctx.flags_count++];
   *f = (struct flag){
     .type = FLAG_TYPE_INT64,
