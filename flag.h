@@ -52,14 +52,18 @@ void flag_print_options(FILE *stream);
 
 #ifdef FLAG_IMPLEMENTATION
 
-static struct flag g_flags[FLAG_CAP];
-static int g_flags_count = 0;
+struct flag_context {
+  struct flag flags[FLAG_CAP];
+  int flags_count;
+};
+
+static struct flag_context g_flag_ctx = {0};
 
 bool *flag_bool(const char *name, const char *name_short, bool default_value, const char *description)
 {
-  assert(g_flags_count < FLAG_CAP && "");
+  assert(g_flag_ctx.flags_count < FLAG_CAP && "");
   assert(sizeof(bool) <= sizeof(uintptr_t));
-  struct flag *f = &g_flags[g_flags_count++];
+  struct flag *f = &g_flag_ctx.flags[g_flag_ctx.flags_count++];
   *f = (struct flag){
     .type = FLAG_TYPE_BOOL,
     .name = name,
@@ -73,9 +77,9 @@ bool *flag_bool(const char *name, const char *name_short, bool default_value, co
 
 char **flag_str(const char *name, const char *name_short, const char *default_value, const char *description)
 {
-  assert(g_flags_count < FLAG_CAP && "");
+  assert(g_flag_ctx.flags_count < FLAG_CAP && "");
   assert(sizeof(char *) <= sizeof(uintptr_t));
-  struct flag *f = &g_flags[g_flags_count++];
+  struct flag *f = &g_flag_ctx.flags[g_flag_ctx.flags_count++];
   *f = (struct flag){
     .type = FLAG_TYPE_STR,
     .name = name,
@@ -89,9 +93,9 @@ char **flag_str(const char *name, const char *name_short, const char *default_va
 
 int64_t *flag_int64(const char *name, const char *name_short, int64_t default_value, const char *description)
 {
-  assert(g_flags_count < FLAG_CAP && "");
+  assert(g_flag_ctx.flags_count < FLAG_CAP && "");
   assert(sizeof(int64_t) <= sizeof(uintptr_t));
-  struct flag *f = &g_flags[g_flags_count++];
+  struct flag *f = &g_flag_ctx.flags[g_flag_ctx.flags_count++];
   *f = (struct flag){
     .type = FLAG_TYPE_INT64,
     .name = name,
@@ -182,8 +186,8 @@ void flag_parse(int argc, char **argv)
     if (flag[0] == '-' && flag[1] == '-') {
       flag += 2; // skip dashes
 
-      for (int i = 0; i < g_flags_count && !found; i += 1) {
-        struct flag *f = &g_flags[i];
+      for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
+        struct flag *f = &g_flag_ctx.flags[i];
 
         if (strcmp(flag, f->name) == 0) {
           found = true;
@@ -194,8 +198,8 @@ void flag_parse(int argc, char **argv)
     // short names
     else if (flag[0] == '-') {
       flag += 1; // skip dash
-      for (int i = 0; i < g_flags_count && !found; i += 1) {
-        struct flag *f = &g_flags[i];
+      for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
+        struct flag *f = &g_flag_ctx.flags[i];
 
         if (strcmp(flag, f->name_short) == 0) {
           found = true;
@@ -209,8 +213,8 @@ void flag_parse(int argc, char **argv)
     }
   }
 
-  for (int i = 0; i < g_flags_count; i += 1) {
-    struct flag *f = &g_flags[i];
+  for (int i = 0; i < g_flag_ctx.flags_count; i += 1) {
+    struct flag *f = &g_flag_ctx.flags[i];
     if (f->is_required && !f->set_by_user)
     {
       fprintf(stderr, "Error: Required flag '%s' not set.\n", f->name);
@@ -221,8 +225,8 @@ void flag_parse(int argc, char **argv)
 
 void flag_print_options(FILE *stream)
 {
-  for (int i = 0; i < g_flags_count; i += 1) {
-    struct flag *f = &g_flags[i];
+  for (int i = 0; i < g_flag_ctx.flags_count; i += 1) {
+    struct flag *f = &g_flag_ctx.flags[i];
     fprintf(stream, "  --%s, -%s     %s", f->name, f->name_short, f->description);
 
     fprintf(stream, "  [ ");
