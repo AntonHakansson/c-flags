@@ -7,7 +7,7 @@
 #include "flag.h"
 
 void usage(FILE *stream) {
-  fprintf(stream, "Usage: parse [OPTIONS]\n");
+  fprintf(stream, "Usage: example [OPTIONS]\n");
   fprintf(stream, "Options:\n");
   flag_print_options(stream);
   printf("\n");
