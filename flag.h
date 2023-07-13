@@ -32,6 +32,7 @@ struct flag {
   const char *name;
   const char *name_short;
   const char *description;
+  bool      is_required;
   bool      set_by_user;
   uintptr_t value;
   uintptr_t default_value;
@@ -42,6 +43,7 @@ char   **flag_str  (const char *name, const char *name_short, const char *defaul
 int64_t *flag_int64(const char *name, const char *name_short, int64_t default_value, const char *description);
 
 struct flag *flag_info(void *value_ptr);
+void flag_required(void *value_ptr);
 void flag_parse(int argc, char **argv);
 void flag_print_options(FILE *stream);
 
@@ -112,7 +114,8 @@ static char *flag_shift_args(int argc[static 1], char **argv[static 1])
 }
 
 
-static void flag_parse_stripped_flag(int *argc, char **argv[static 1], char *flag, struct flag *f) {
+static void flag_parse_stripped_flag(int *argc, char **argv[static 1], char *flag, struct flag *f)
+{
   f->set_by_user = true;
 
   switch (f->type) {
@@ -156,8 +159,15 @@ static void flag_parse_stripped_flag(int *argc, char **argv[static 1], char *fla
   }
 }
 
-struct flag *flag_info(void *value_ptr) {
+struct flag *flag_info(void *value_ptr)
+{
   return (struct flag *)(value_ptr - offsetof(struct flag, value));
+}
+
+void flag_required(void *value_ptr)
+{
+  struct flag* f = flag_info(value_ptr);
+  f->is_required = true;
 }
 
 void flag_parse(int argc, char **argv)
@@ -196,6 +206,15 @@ void flag_parse(int argc, char **argv)
 
     if (!found) {
       fprintf(stderr, "Warning: unexpected argument '%s'\n", flag);
+    }
+  }
+
+  for (int i = 0; i < g_flags_count; i += 1) {
+    struct flag *f = &g_flags[i];
+    if (f->is_required && !f->set_by_user)
+    {
+      fprintf(stderr, "Error: Required flag '%s' not set.\n", f->name);
+      exit(1);
     }
   }
 }

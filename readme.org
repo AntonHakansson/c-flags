@@ -25,7 +25,6 @@ See [[file:example.c]] for more details.
 - No dynamic allocations.
 
 * TODOS
-** TODO option to make a flag required
 ** TODO positional flags
 ** TODO remove libc dependency
 ** TODO add optional min, max checking of int64 flags

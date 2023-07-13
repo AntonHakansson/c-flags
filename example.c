@@ -6,7 +6,8 @@
 #define FLAG_IMPLEMENTATION
 #include "flag.h"
 
-void usage(FILE *stream) {
+void usage(FILE *stream)
+{
   fprintf(stream, "Usage: example [OPTIONS]\n");
   fprintf(stream, "Options:\n");
   flag_print_options(stream);
