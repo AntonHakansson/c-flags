@@ -18,6 +18,6 @@ set -o xtrace
 ./example -i arst # invalid number
 ./example -i -999999999999999999999999999999 # number out of range
 ./example --bool --str "tste" --int 59
-./example --sthisisnotanrgument # Warn: unknown argument
+./example --sthisisnotanrgument # warn: unknown argument
 ./example --help
 ./example -h

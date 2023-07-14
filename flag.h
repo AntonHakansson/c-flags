@@ -197,6 +197,7 @@ void flag_parse(int argc, char **argv)
       for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
         struct flag *f = &g_flag_ctx.flags[i];
 
+        assert(f->name);
         if (strcmp(flag, f->name) == 0) {
           found = true;
           flag_parse_stripped_flag(&argc, &argv, flag, f);
@@ -209,7 +210,7 @@ void flag_parse(int argc, char **argv)
       for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
         struct flag *f = &g_flag_ctx.flags[i];
 
-        if (strcmp(flag, f->name_short) == 0) {
+        if (f->name_short && strcmp(flag, f->name_short) == 0) {
           found = true;
           flag_parse_stripped_flag(&argc, &argv, flag, f);
         }
