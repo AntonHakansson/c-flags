@@ -23,9 +23,11 @@ See [[file:example.c]] for more details.
 
 - Support for booleans, strings, and integers.
 - No dynamic allocations.
+- Fuzz tested with [[https://github.com/AFLplusplus/AFLplusplus][AFLplusplus]].
 
 
 * TODOS
+
 ** TODO remove libc dependency
 ** TODO add optional min, max checking of int64 flags
 

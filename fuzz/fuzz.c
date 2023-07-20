@@ -20,6 +20,7 @@ int main(int argc, char *argv[])
 {
   AFL_INIT_ARGV();
 
+  // TODO: dynamically add flags when fuzzing to cover more cases.
   bool     *bool_flag = flag_bool("bool", "b", false, "This is a boolean flag of the form '--bool' or '-b'");
   bool     *bool_null_flag = flag_bool("bool_nul", 0, true, "desc");
   char    **str_flag  = flag_str ("str",  "s", "default string",     "This is a string flag of the form '--str <str>' or '-s <str>'");
