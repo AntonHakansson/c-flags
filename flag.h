@@ -45,8 +45,12 @@ bool    *flag_bool (const char *name, const char *name_short, bool default_value
 char   **flag_str  (const char *name, const char *name_short, const char *default_value, const char *description);
 int64_t *flag_int64(const char *name, const char *name_short, int64_t default_value, const char *description);
 
-struct flag *flag_info(void *value_ptr);
 void flag_required(void *value_ptr);
+struct flag *flag_info(void *value_ptr);
+
+int   flag_pargs_n();    // Get the the number of arguments after parsing named arguments
+char *flag_pargs(int i); // Get i'th argument after parsing named arguments (positional arguments)
+
 void flag_parse(int argc, char **argv);
 void flag_print_options(FILE *stream);
 
@@ -63,6 +67,9 @@ void flag_print_options(FILE *stream);
 struct flag_context {
   struct flag flags[FLAG_CAP];
   int flags_count;
+
+  char *positionals[FLAG_CAP];
+  int positionals_count;
 };
 
 static struct flag_context g_flag_ctx = {0};
@@ -182,12 +189,24 @@ void flag_required(void *value_ptr)
   f->is_required = true;
 }
 
+char *flag_pargs(int i)
+{
+  assert(i < g_flag_ctx.positionals_count);
+  return g_flag_ctx.positionals[i];
+}
+
+int flag_pargs_n()
+{
+  return g_flag_ctx.positionals_count;
+}
+
 void flag_parse(int argc, char **argv)
 {
   flag_shift_args(&argc, &argv); // skip exe name
 
   while (argc > 0) {
-    char *flag = flag_shift_args(&argc, &argv);
+    char *const argument = flag_shift_args(&argc, &argv);
+    char *flag = argument;
     bool found = false;
 
     // long names
@@ -205,7 +224,7 @@ void flag_parse(int argc, char **argv)
       }
     }
     // short names
-    else if (flag[0] == '-') {
+    else if (!found && flag[0] == '-') {
       flag += 1; // skip dash
       for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
         struct flag *f = &g_flag_ctx.flags[i];
@@ -218,7 +237,14 @@ void flag_parse(int argc, char **argv)
     }
 
     if (!found) {
-      fprintf(stderr, "Warning: unexpected argument '%s'\n", flag);
+      // treat as positional argument
+      if (g_flag_ctx.positionals_count < FLAG_CAP) {
+        g_flag_ctx.positionals[g_flag_ctx.positionals_count++] = argument;
+      }
+      else {
+        fprintf(stderr, "Error: too many positional arguments given.");
+        exit(1);
+      }
     }
   }
 

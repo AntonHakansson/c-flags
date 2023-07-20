@@ -8,7 +8,7 @@
 
 void usage(FILE *stream)
 {
-  fprintf(stream, "Usage: example [OPTIONS]\n");
+  fprintf(stream, "Usage: example [OPTIONS] FILE\n");
   fprintf(stream, "Options:\n");
   flag_print_options(stream);
   printf("\n");
@@ -40,6 +40,18 @@ int main(int argc, char *argv[])
   struct flag *int_flag_info = flag_info(int_flag);
   if (int_flag_info->set_by_user) {
     printf("log: argument to flag '%s' explicitly given by user: '%ld'\n", int_flag_info->name, *int_flag);
+  }
+
+  // Handle positional argument
+  if (flag_pargs_n() < 1) {
+    fprintf(stderr, "Error: Expected FILE argument.\n");
+    exit(1);
+  }
+  char *file_path = flag_pargs(0);
+  printf("log: positional FILE is is %s\n", file_path);
+
+  for (int i = 1; i < flag_pargs_n(); i += 1) {
+    printf("log: positional argument %d is %s\n", i, flag_pargs(i));
   }
 
   putchar('\n');

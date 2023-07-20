@@ -62,7 +62,7 @@ static char** afl_init_argv(int* argc) {
   char* ptr = in_buf;
   int   rc  = 1; /* start after argv[0] */
 
-  if (read(0, in_buf, MAX_CMDLINE_LEN - 2) < 0);
+  if (read(0, in_buf, MAX_CMDLINE_LEN - 2) < 0) {};
 
   while (*ptr) {
 

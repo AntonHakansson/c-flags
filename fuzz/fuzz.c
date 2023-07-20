@@ -47,6 +47,11 @@ int main(int argc, char *argv[])
     printf("log: argument to flag '%s' explicitly given by user: '%ld'\n", int_flag_info->name, *int_flag);
   }
 
+  // Iterate over positional argument
+  for (int i = 0; i < flag_pargs_n(); i += 1) {
+    printf("log: positional %d is %s\n", i, flag_pargs(i));
+  }
+
   putchar('\n');
 
   return 0;
