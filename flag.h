@@ -9,11 +9,35 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <assert.h>
 
 #ifndef FLAG_CAP
 #define FLAG_CAP 64
 #endif
+
+#ifndef FLAG_ASSERT
+#define FLAG_ASSERT(expr) assert((expr));
+#define FLAG_STATIC_ASSERT(expr, msg) static_assert((expr), (msg));
+#endif
+
+
+enum FLAG_ERROR {
+  FLAG_ERROR_NONE,
+  FLAG_ERROR_MISSING_VALUE,
+  FLAG_ERROR_MISSING_REQUIRED_FLAG,
+  FLAG_ERROR_INVALID_INT64,
+  FLAG_ERROR_OVERFLOW_INT64,
+  FLAG_ERROR_UNDERFLOW_INT64,
+  FLAG_ERROR_TOO_MANY_PARGS,
+  FLAG_ERROR_COUNT,
+};
+
+struct flag_error {
+  enum FLAG_ERROR code;
+  const char *flag;
+  union {
+    struct { char *number_str; } int64;
+  };
+};
 
 enum FLAG_TYPE {
   FLAG_TYPE_BOOL,
@@ -51,18 +75,16 @@ struct flag *flag_info(void *value_ptr);
 int   flag_pargs_n();    // Get the the number of arguments after parsing named arguments
 char *flag_pargs(int i); // Get i'th argument after parsing named arguments (positional arguments)
 
-void flag_parse(int argc, char **argv);
-void flag_print_options(FILE *stream);
+bool flag_parse(int argc, char **argv);
 
+#if __STDC_HOSTED__ == 1
+void flag_print_options(FILE *stream);
+void flag_print_error(FILE *stream);
+#endif
 
 
 
 #ifdef FLAG_IMPLEMENTATION
-
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <stddef.h>
 
 struct flag_context {
   struct flag flags[FLAG_CAP];
@@ -70,6 +92,8 @@ struct flag_context {
 
   char *positionals[FLAG_CAP];
   int positionals_count;
+
+  struct flag_error error;
 };
 
 static struct flag_context g_flag_ctx = {0};
@@ -122,6 +146,118 @@ int64_t *flag_int64(const char *name, const char *name_short, int64_t default_va
   return &f->value.as_int64;
 }
 
+// Return true on match
+static bool flag_str_cmp(const char *a, const char *b) {
+  assert(a && b);
+  for (; *a && *b; a++, b++) {
+    if (*a != *b) {
+      return false;
+    }
+  }
+  return true;
+}
+
+//
+// Credit: https://github.com/skeeto/scratch/blob/master/parsers/strtonum.c
+//
+// Parse the buffer as a base 10 integer. The buffer may contain
+// arbitrary leading whitespace ("\t\n\v\f\r "), one optional + or -,
+// then any number of digits ("0123456789").
+//
+// If the result is < min,   returns FLAG_ERROR_UNDERFLOW_INT64,
+// If the result is > max,   returns FLAG_ERROR_OVERFLOW_INT64,
+// If the buffer is invalid, returns FLAG_ERROR_INVALID_INT64,
+// Otherwise returns FLAG_ERROR_NONE and *out is set to the parsed value.
+//
+static enum FLAG_ERROR flag_str_to_int64(const char *buf, int64_t *out, int64_t min, int64_t max)
+{
+  assert(buf);
+  assert(out);
+  assert(min < max);
+
+  // Skip any leading whitespace
+  for (; (*buf >= 0x09 && *buf <= 0x0d) || (*buf == 0x20); buf++);
+
+  int64_t mmax, mmin, n = 0;
+  switch (*buf) {
+  case 0x2b: // +
+    buf++; // fallthrough
+  case 0x30: case 0x31: case 0x32: case 0x33: case 0x34:
+  case 0x35: case 0x36: case 0x37: case 0x38: case 0x39:
+    // Accumulate in positive direction, watching for max bound
+    mmax = max / 10;
+    do {
+      int v = *buf++ - 0x30;
+
+      if (v < 0 || v > 9) {
+        goto invalid;
+      }
+
+      if (n > mmax) {
+        goto toolarge;
+      }
+      n *= 10;
+
+      if (max - v < n) {
+        goto toolarge;
+      }
+      n += v;
+    } while (*buf);
+
+    // Still need to check min bound
+    if (n < min) {
+      goto toosmall;
+    }
+
+    *out = n;
+    return FLAG_ERROR_NONE;
+
+  case 0x2d: // -
+    buf++;
+    // Accumulate in negative direction, watching for min bound
+    mmin = min / 10;
+    do {
+      int v = *buf++ - 0x30;
+
+      if (v < 0 || v > 9) {
+        goto invalid;
+      }
+
+      if (n < mmin) {
+        goto toosmall;
+      }
+      n *= 10;
+
+      if (min + v > n) {
+        goto toosmall;
+      }
+      n -= v;
+    } while (*buf);
+
+    // Still need to check max bound
+    if (n > max) {
+      goto toolarge;
+    }
+
+    *out = n;
+    return FLAG_ERROR_NONE;
+  }
+
+ invalid:
+  return FLAG_ERROR_INVALID_INT64;
+
+ toolarge:
+  // Skip remaining digits
+  for (; *buf >= 0x30 && *buf <= 0x39; buf++);
+  if (*buf) goto invalid;
+  return FLAG_ERROR_OVERFLOW_INT64;
+
+ toosmall:
+  // Skip remaining digits
+  for (; *buf >= 0x30 && *buf <= 0x39; buf++);
+  if (*buf) goto invalid;
+  return FLAG_ERROR_UNDERFLOW_INT64;
+}
 
 static char *flag_shift_args(int argc[static 1], char **argv[static 1])
 {
@@ -132,8 +268,7 @@ static char *flag_shift_args(int argc[static 1], char **argv[static 1])
   return result;
 }
 
-
-static void flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], char *flag, struct flag *f)
+static bool flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], char *flag, struct flag *f)
 {
   f->set_by_user = true;
 
@@ -144,42 +279,38 @@ static void flag_parse_stripped_flag(int argc[static 1], char **argv[static 1], 
   } break;
   case FLAG_TYPE_STR: {
     if (*argc < 1) {
-      fprintf(stderr, "Error parsing arguments. Expected string value to flag '%s'.\n", flag);
-      exit(1);
+      g_flag_ctx.error = (struct flag_error) { .code = FLAG_ERROR_MISSING_VALUE, .flag = flag, };
+      return false;
     }
     char *str_val = flag_shift_args(argc, argv);
     f->value.as_str = str_val;
   } break;
   case FLAG_TYPE_INT64: {
     if (*argc < 1) {
-      fprintf(stderr, "Error parsing arguments. Expected number value to flag '%s'.\n", flag);
-      exit(1);
+      g_flag_ctx.error = (struct flag_error) { .code = FLAG_ERROR_MISSING_VALUE, .flag = flag, };
+      return false;
     }
     char *number_str = flag_shift_args(argc, argv);
 
-    errno = 0;
-    char *endptr;
-    int64_t v = strtoll(number_str, &endptr, 0);
-    if (errno != 0) {
-      perror("strtol");
-      exit(1);
-    }
-
-    if (endptr == number_str) {
-      fprintf(stderr, "Error parsing the number '%s' of flag '%s'.\n", number_str, flag);
-      exit(1);
+    int64_t v = 0;
+    enum FLAG_ERROR err = flag_str_to_int64(number_str, &v, INT64_MIN, INT64_MAX);
+    if (err != FLAG_ERROR_NONE) {
+      g_flag_ctx.error = (struct flag_error) { .code = err, .flag = flag, .int64.number_str = number_str, };
+      return false;
     }
 
     f->value.as_int64 = v;
   } break;
   default: assert(0 && "unreachable");
   }
+
+  return true;
 }
 
 struct flag *flag_info(void *value_ptr)
 {
   assert(value_ptr);
-  return (struct flag *)(value_ptr - offsetof(struct flag, value));
+  return (struct flag *)(value_ptr - __builtin_offsetof(struct flag, value));
 }
 
 void flag_required(void *value_ptr)
@@ -200,7 +331,7 @@ int flag_pargs_n()
   return g_flag_ctx.positionals_count;
 }
 
-void flag_parse(int argc, char **argv)
+bool flag_parse(int argc, char **argv)
 {
   flag_shift_args(&argc, &argv); // skip exe name
 
@@ -217,9 +348,10 @@ void flag_parse(int argc, char **argv)
         struct flag *f = &g_flag_ctx.flags[i];
 
         assert(f->name);
-        if (strcmp(flag, f->name) == 0) {
+        if (flag_str_cmp(flag, f->name)) {
           found = true;
-          flag_parse_stripped_flag(&argc, &argv, flag, f);
+          bool ok = flag_parse_stripped_flag(&argc, &argv, flag, f);
+          if (!ok) { return false; }
         }
       }
     }
@@ -229,9 +361,10 @@ void flag_parse(int argc, char **argv)
       for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
         struct flag *f = &g_flag_ctx.flags[i];
 
-        if (f->name_short && strcmp(flag, f->name_short) == 0) {
+        if (f->name_short && flag_str_cmp(flag, f->name_short)) {
           found = true;
-          flag_parse_stripped_flag(&argc, &argv, flag, f);
+          bool ok = flag_parse_stripped_flag(&argc, &argv, flag, f);
+          if (!ok) { return false; }
         }
       }
     }
@@ -242,19 +375,60 @@ void flag_parse(int argc, char **argv)
         g_flag_ctx.positionals[g_flag_ctx.positionals_count++] = argument;
       }
       else {
-        fprintf(stderr, "Error: too many positional arguments given.");
-        exit(1);
+        g_flag_ctx.error = (struct flag_error) { .code = FLAG_ERROR_TOO_MANY_PARGS, };
+        return false;
       }
     }
   }
 
   for (int i = 0; i < g_flag_ctx.flags_count; i += 1) {
     struct flag *f = &g_flag_ctx.flags[i];
-    if (f->is_required && !f->set_by_user)
-    {
-      fprintf(stderr, "Error: Required flag '%s' not set.\n", f->name);
-      exit(1);
+    if (f->is_required && !f->set_by_user) {
+      g_flag_ctx.error = (struct flag_error) { .code = FLAG_ERROR_MISSING_REQUIRED_FLAG, .flag = f->name, };
+      return false;
     }
+  }
+
+  return true;
+}
+
+#if __STDC_HOSTED__ == 1
+
+void flag_print_error(FILE *stream)
+{
+  struct flag_error e = g_flag_ctx.error;
+
+  static_assert(FLAG_ERROR_COUNT == 7, "Handle all FLAG_ERROR.");
+  switch (e.code) {
+  case FLAG_ERROR_NONE:
+    {
+      fprintf(stream, "Internal Error. The developer called an error handling procedure without there being any errors. Fire that guy.\n");
+    } break;
+  case FLAG_ERROR_MISSING_REQUIRED_FLAG:
+    {
+      fprintf(stream, "Error. Required flag '%s' not set.\n", e.flag);
+    } break;
+  case FLAG_ERROR_MISSING_VALUE:
+    {
+      fprintf(stream, "Error parsing arguments. Expected a value to flag '%s'.\n", e.flag);
+    } break;
+  case FLAG_ERROR_INVALID_INT64:
+    {
+      fprintf(stream, "Error parsing the number '%s' of flag '%s'.\n", e.int64.number_str, e.flag);
+    } break;
+  case FLAG_ERROR_UNDERFLOW_INT64:
+    {
+      fprintf(stream, "Error parsing the number '%s' of flag '%s'. Underflow.\n", e.int64.number_str, e.flag);
+    } break;
+  case FLAG_ERROR_OVERFLOW_INT64:
+    {
+      fprintf(stream, "Error parsing the number '%s' of flag '%s'. Overflow.\n", e.int64.number_str, e.flag);
+    } break;
+  case FLAG_ERROR_TOO_MANY_PARGS:
+    {
+      fprintf(stream, "Error: too many positional arguments given.\n");
+    } break;
+  case FLAG_ERROR_COUNT: assert(0 && "unreachable");
   }
 }
 
@@ -282,13 +456,13 @@ void flag_print_options(FILE *stream)
         int64_t v = f->default_value.as_int64;
         fprintf(stream, "default: %ld", v);
       } break;
-
-    default: assert(0 && "unreachable");
+    case FLAG_TYPE_COUNT: assert(0 && "unreachable");
     }
-
     fprintf(stream, " ]\n");
   }
 }
+
+#endif // __STDC_HOSTED__
 
 #endif // FLAG_IMPLEMENTATIONS
 

@@ -8,7 +8,11 @@ It is not meant to be used as-is but rather copied, teased, and molded to fit th
   bool    *help_flag = flag_bool ("help", "h", false, "Show help menu.");
   int64_t *foo_flag  = flag_int64("foo",  "f", 69,    "Foo variable that does X.");
 
-  flag_parse(argc, argv);
+  bool ok = flag_parse(argc, argv);
+  if (!ok) {
+    flag_print_error(stderr);
+    exit(1);
+  }
 
   if (*help_flag) {
     printf("Usage: ./program [OPTIONS]\n");
@@ -24,11 +28,11 @@ See [[file:example.c]] for more details.
 - Support for booleans, strings, and integers.
 - No dynamic allocations.
 - Fuzz tested with [[https://github.com/AFLplusplus/AFLplusplus][AFLplusplus]].
+- Optional libc dependency.
 
 
 * TODOS
 
-** TODO remove libc dependency
 ** TODO add optional min, max checking of int64 flags
 
 

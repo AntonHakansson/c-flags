@@ -1,6 +1,6 @@
-#include "stdbool.h"
-#include "stdio.h"
-#include "limits.h"
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #define FLAG_IMPLEMENTATION
@@ -22,7 +22,12 @@ int main(int argc, char *argv[])
   int64_t  *int_flag  = flag_int64("int", "i", 69,    "This is a int flag of the form '--int <number>' or '-i <number>'");
   bool     *help      = flag_bool("help", "h", false, "Show help menu.");
 
-  flag_parse(argc, argv);
+  bool ok = flag_parse(argc, argv);
+  if (!ok) {
+    flag_print_error(stderr);
+    exit(1);
+  }
+
   if (*help) {
     usage(stdout);
     exit(0);
