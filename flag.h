@@ -2,6 +2,8 @@
   This is a scaffolding implementation of simple argument parsing.  Copy the file into
   your project, parse types supported out of the box, or implement your own types
   in-place.
+
+  This is free and unencumbered software released into the public domain.
 */
 
 #ifndef __FLAG_H
@@ -146,15 +148,14 @@ int64_t *flag_int64(const char *name, const char *name_short, int64_t default_va
   return &f->value.as_int64;
 }
 
-// Return true on match
-static bool flag_str_cmp(const char *a, const char *b) {
-  assert(a && b);
-  for (; *a && *b; a++, b++) {
-    if (*a != *b) {
-      return false;
-    }
-  }
-  return true;
+// Returns
+// 0, if the s1 and s2 are equal;
+// a negative value if s1 is less than s2;
+// a positive value if s1 is greater than s2.
+static int flag_str_cmp(const char *l, const char *r) {
+  assert(l && r);
+  for (; *l==*r && *l; l++, r++) {}
+	return *(unsigned char *)l - *(unsigned char *)r;
 }
 
 //
@@ -348,7 +349,7 @@ bool flag_parse(int argc, char **argv)
         struct flag *f = &g_flag_ctx.flags[i];
 
         assert(f->name);
-        if (flag_str_cmp(flag, f->name)) {
+        if (flag_str_cmp(flag, f->name) == 0) {
           found = true;
           bool ok = flag_parse_stripped_flag(&argc, &argv, flag, f);
           if (!ok) { return false; }
@@ -361,7 +362,7 @@ bool flag_parse(int argc, char **argv)
       for (int i = 0; i < g_flag_ctx.flags_count && !found; i += 1) {
         struct flag *f = &g_flag_ctx.flags[i];
 
-        if (f->name_short && flag_str_cmp(flag, f->name_short)) {
+        if (f->name_short && flag_str_cmp(flag, f->name_short) == 0) {
           found = true;
           bool ok = flag_parse_stripped_flag(&argc, &argv, flag, f);
           if (!ok) { return false; }

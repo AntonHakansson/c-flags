@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     exit(1);
   }
   char *file_path = flag_pargs(0);
-  printf("log: positional FILE is is %s\n", file_path);
+  printf("log: positional FILE is %s\n", file_path);
 
   for (int i = 1; i < flag_pargs_n(); i += 1) {
     printf("log: positional argument %d is %s\n", i, flag_pargs(i));
